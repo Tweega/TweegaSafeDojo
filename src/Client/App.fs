@@ -17,7 +17,8 @@ open Thoth.Fetch
 /// The different elements of the completed report.
 type Report =
     { Location : LocationResponse
-      Crimes : CrimeResponse array }
+      Crimes : CrimeResponse array 
+      Weather : WeatherResponse}
 
 type ServerState = Idle | Loading | ServerError of string
 
@@ -31,6 +32,7 @@ type Model =
 /// The different types of messages in the system.
 type Msg =
     | GetReport
+    | ClearReport
     | PostcodeChanged of string
     | GotReport of Report
     | ErrorMsg of exn
@@ -46,13 +48,15 @@ let getResponse postcode = promise {
     let! location = Fetch.get<LocationResponse>(sprintf "/api/distance/%s" postcode)
     // if the endpoint doesn't exist, just return an empty array!
     let! crimes = Fetch.get<CrimeResponse array>(sprintf "api/crime/%s" postcode) |> Promise.catch(fun _ -> [||])
+    let! weather = Fetch.get<WeatherResponse>(sprintf "api/weather/%s" postcode) |> Promise.catch(fun _ -> { WeatherType = Shared.Unknown; AverageTemperature = 0. })
 
     (* Task 4.5 WEATHER: Fetch the weather from the API endpoint you created.
        Then, save its value into the Report below. You'll need to add a new
        field to the Report type first, though! *)
     return
         { Location = location
-          Crimes = crimes }
+          Crimes = crimes 
+          Weather = weather}
 }
 
 /// The update function knows how to update the model given a message.
@@ -60,6 +64,7 @@ let update msg model =
     match model, msg with
     | { ValidationError = None; Postcode = postcode }, GetReport ->
         { model with ServerState = Loading }, Cmd.OfPromise.either getResponse postcode GotReport ErrorMsg
+    | _, ClearReport -> init()        
     | _, GetReport ->
         model, Cmd.none
     | _, GotReport response ->
@@ -68,11 +73,18 @@ let update msg model =
             Report = Some response
             ServerState = Idle }, Cmd.none
     | _, PostcodeChanged p ->
+        let ve = 
+            match  Validation.isValidPostcode (p)  with
+                | false ->
+                    Some (sprintf "Not a vlaid post code %s: " p)
+                | true ->
+                    None
         { model with
             Postcode = p
             (* Task 2.2 Validation. Use the Validation.isValidPostcode function to implement client-side form validation.
                Note that the validation is the same shared code that runs on the server! *)
-            ValidationError = None }, Cmd.none
+            
+            ValidationError = ve }, Cmd.none
     | _, ErrorMsg e ->
         { model with ServerState = ServerError e.Message }, Cmd.none
 
@@ -114,20 +126,23 @@ module ViewParts =
         ]
 
     let mapTile (lr:LocationResponse) =
-        let latLong = LatLngExpression.Case3(lr.Location.LatLong.Latitude, lr.Location.LatLong.Longitude)
+        let latlong = LatLngExpression.Case3(lr.Location.LatLong.Latitude, lr.Location.LatLong.Longitude)        
         basicTile "Map" [ Tile.Size Tile.Is12 ] [
             map [
                 (* Task 3.2 MAP: Set the center of the map using MapProps.Center, supply the lat/long value as input.
                    Task 3.3 MAP: Update the Zoom to 15. *)
-                MapProps.Zoom 11.
+                MapProps.Center latlong
+                MapProps.Zoom 15.
                 MapProps.Style [ Height 500 ]
             ] [
                 tileLayer [ TileLayerProps.Url "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" ] []
+                makeMarker latlong "this is where we swam"
                 (* Task 3.4 MAP: Create a marker for the map. Use the makeMarker function above. *)
             ]
         ]
 
     let weatherTile weatherReport =
+        let t = weatherReport.AverageTemperature
         childTile "Weather" [
             Level.level [ ] [
                 Level.item [ Level.Item.HasTextCentered ] [
@@ -141,7 +156,7 @@ module ViewParts =
                             Heading.h3 [ Heading.Is4; Heading.Props [ Style [ Width "100%" ] ] ] [
                                 (* Task 4.8 WEATHER: Get the temperature from the given weather report
                                    and display it here instead of an empty string. *)
-                                str ""
+                                str (sprintf "%.2f" t)
                             ]
                         ]
                     ]
@@ -207,6 +222,15 @@ let view (model:Model) dispatch =
                                   Button.IsLoading (model.ServerState = ServerState.Loading) ]
                                 [ str "Submit" ]
                         ]
+                        Level.item [] [
+                            Button.button
+                                [ Button.IsFullWidth
+                                  Button.Color IsPrimary
+                                  Button.OnClick (fun _ -> dispatch ClearReport)
+                                  Button.Disabled (false)
+                                  Button.IsLoading (model.ServerState = ServerState.Loading) ]
+                                [ str "Clear" ]
+                        ]
                     ]
                 ]
             ]
@@ -229,6 +253,7 @@ let view (model:Model) dispatch =
                         (* Task 3.1 MAP: Call the mapTile function here, which creates a
                         tile to display a map using the React Leaflet component. The function
                         takes in a LocationResponse value as input and returns a ReactElement. *)
+                        mapTile report.Location
                     ]
                 ]
                 Tile.ancestor [ ] [
@@ -237,6 +262,7 @@ let view (model:Model) dispatch =
                         (* Task 4.6 WEATHER: Generate the view code for the weather tile
                            using the weatherTile function, supplying the weather data
                            from the report value, and include it here as part of the list *)
+                        weatherTile report.Weather
                     ]
                     Tile.parent [ Tile.Size Tile.Is8 ] [
                         crimeTile report.Crimes

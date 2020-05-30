@@ -12,6 +12,7 @@ type Location =
 type LocationResponse = { Postcode : string; Location : Location; DistanceToLondon : float }
 type CrimeResponse = { Crime : string; Incidents : int }
 type WeatherType =
+    | Unknown
     | Snow
     | Sleet
     | Hail
@@ -31,7 +32,7 @@ type WeatherType =
     member this.Abbreviation =
         match this with
         | Snow -> "sn" | Sleet -> "sl" | Hail -> "h" | Thunder -> "t" | HeavyRain -> "hr"
-        | LightRain -> "lr" | Showers -> "s" | HeavyCloud -> "hc" | LightCloud -> "lc" | Clear -> "c"
+        | LightRain -> "lr" | Showers -> "s" | HeavyCloud -> "hc" | LightCloud -> "lc" | Clear -> "c" | Unknown -> "?"
 
 type WeatherResponse = { WeatherType : WeatherType; AverageTemperature : float }
 

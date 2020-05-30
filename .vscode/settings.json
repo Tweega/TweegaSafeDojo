@@ -1,0 +1,4 @@
+{
+    "appService.defaultWebAppToDeploy": "/subscriptions/b4156b48-4677-428d-b597-02b71f8b95eb/resourceGroups/appsvc_linux_centralus/providers/Microsoft.Web/sites/TweegaSAFEDojo",
+    "appService.deploySubpath": "."
+}
